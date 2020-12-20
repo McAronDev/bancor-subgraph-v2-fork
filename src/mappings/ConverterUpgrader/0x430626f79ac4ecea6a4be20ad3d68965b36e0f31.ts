@@ -16,7 +16,8 @@ import {
     ConverterUpgrade as ConverterUpgradeEvent,
     OwnerUpdate as OwnerUpdateEvent
 } from '../../../generated/ConverterUpgrader-0x430626f79ac4ecea6a4be20ad3d68965b36e0f31/ConverterUpgrader'
-import { log, BigDecimal, BigInt, Address } from '@graphprotocol/graph-ts'
+import { log, BigDecimal, BigInt, Address, Bytes } from '@graphprotocol/graph-ts'
+import {ethereum, ValueKind} from '@graphprotocol/graph-ts/index';
 
 export function handleConverterOwned(event: ConverterOwnedEvent): void {}
 
@@ -62,7 +63,11 @@ function _createAndReturnConverterBalance(converterAddress: Address, tokenAddres
     if (converterBalance === null) {
         // Get poolToken
         let converter = ConverterEntity.load(id);
-        if (converter.type.equals(BigInt.fromI32(2))) {
+        let converterType = converter.get('type');
+        converterType.kind = ValueKind.STRING;
+
+
+        if (converterType.toString() == String.fromCharCode(2)) {
             let converterContract = LiquidityPoolV2Converter.bind(converterAddress);
             let poolTokenResult = converterContract.try_poolToken(tokenAddress);
             if (poolTokenResult.reverted) {
@@ -110,16 +115,30 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
             continue
         }
 
-        let reserveBalanceResult = converterContract.try_reserveStakedBalance(reserveTokenResult.value);
+        let reserveBalanceResult = converterContract.try_reserveBalance(reserveTokenResult.value);
+
+
+        if (reserveBalanceResult.reverted){
+
+            log.warning("try_reserveBalance reverted for converter {} and token {}. Converter v{}", [
+                id,
+                reserveTokenResult.value.toHexString(),
+                converter.version.toString()
+            ]);
+            reserveBalanceResult = ethereum.CallResult.fromValue(BigInt.fromI32(0));
+
+        }
+
+
         let reserveWeightResult = converterContract.try_reserveWeight(reserveTokenResult.value);
-        
-        if (reserveBalanceResult.reverted || reserveWeightResult.reverted) {
-            log.error("_updateReserveBalancesAndWeights contract calls reverted for converter {} and token {}", [
+
+        if (reserveWeightResult.reverted){
+            log.error("try_reserveWeight reverted for converter {} and token {}", [
                 id,
                 reserveTokenResult.value.toHexString()
             ]);
-            continue
         }
+
 
         let reserveToken = TokenEntity.load(reserveTokenResult.value.toHexString());
         if (reserveToken === null) {
@@ -127,27 +146,44 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
                 id,
                 reserveTokenResult.value.toHexString()
             ]);
+            isReverted = true;
             continue
         }
 
         let converterBalance = _createAndReturnConverterBalance(converterAddress, reserveTokenResult.value);
 
         // Update converter actual balance
-        let reserveTokenContract = ERC20Token.bind(reserveTokenResult.value);
+        if (reserveTokenResult.value.toHexString() != '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            let reserveTokenContract = ERC20Token.bind(reserveTokenResult.value);
 
-        let balanceOf = reserveTokenContract.try_balanceOf(converterAddress);
-        if (!balanceOf.reverted) {
-            converterBalance.balance = balanceOf.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            let balanceOf = reserveTokenContract.try_balanceOf(converterAddress);
+            if (!balanceOf.reverted) {
+                converterBalance.balance = balanceOf.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            } else {
+                log.warning("Balance of reverted for {} {}", [
+                    converterAddress.toHexString(),
+                    reserveTokenResult.value.toHexString()
+                ])
+            }
+        }
+
+        let isActive = converterContract.try_isActive();
+        if (!isActive.reverted) {
+            if (isActive.value) {
+                converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            }
+            else {
+                converterBalance.stakedAmount = BigDecimal.fromString('0');
+            }
         }
         else {
-            log.warning("Balance of reverted for {} {}", [
+            log.warning("isActive reverted for {} {}", [
                 converterAddress.toHexString(),
                 reserveTokenResult.value.toHexString()
             ])
         }
 
         // Update converter balance
-        converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
         converterBalance.weight = reserveWeightResult.value.divDecimal(BigDecimal.fromString("1000000")); // Weight is given in ppm
         converterBalance.save();
 

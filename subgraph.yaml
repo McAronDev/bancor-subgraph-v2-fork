@@ -9,6 +9,37 @@ dataSources:
 # ConverterFactory1
   # ConverterFactory1
     - kind: ethereum/contract
+      name: ConverterFactory1-0x9afb9d7ed0f6c054ec76ea61d5cabc384d4dcb25
+      network: mainnet
+      source:
+        address: '0x9afb9d7ed0f6c054ec76ea61d5cabc384d4dcb25'
+        abi: ConverterFactory
+        startBlock: 10272737
+      mapping:
+        kind: ethereum/events
+        apiVersion: 0.0.4
+        language: wasm/assemblyscript
+        entities:
+          - Converter
+        abis:
+          - name: ConverterFactory
+            file: ./abis/Bancor/ConverterFactory1.json
+          - name: LiquidityPoolV1Converter
+            file: ./abis/LiquidityPoolV1Converter.json
+          - name: LiquidityPoolV2Converter
+            file: ./abis/LiquidityPoolV2Converter.json
+          - name: Converter27
+            file: ./abis/Bancor/Converter27.json
+          - name: Converter25
+            file: ./abis/Bancor/Converter25.json
+          - name: Converter24
+            file: ./abis/Bancor/Converter24.json
+        eventHandlers:
+          - event: NewConverter(indexed address,indexed address)
+            handler: handleNewConverter
+        file: ./src/mappings/ConverterFactory/0x9afb9d7ed0f6c054ec76ea61d5cabc384d4dcb25.ts
+  # ConverterFactory1
+    - kind: ethereum/contract
       name: ConverterFactory1-0x3cc4a258aff14a88380ca3d9703d6bbfb7a8042e
       network: mainnet
       source:

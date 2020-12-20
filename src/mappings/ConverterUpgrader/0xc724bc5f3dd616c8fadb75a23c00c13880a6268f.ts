@@ -1,17 +1,17 @@
 // Testing if I can create converters from the ConverterUpgrader
 // The idea is that Converters via Factories will already be created
 // IF THIS PICKS UP MORE CONVERTERS, DO FOR THE REST
-import { 
+import {
     Converter as ConverterEntity,
     ConverterBalance as ConverterBalanceEntity,
     PoolToken as PoolTokenEntity,
     Token as TokenEntity,
 } from '../../../generated/schema'
 import {
-    LiquidityPoolV2Converter as LiquidityPoolV2ConverterContract
+    LiquidityPoolV2Converter
 } from '../../../generated/ConverterUpgrader-0xc724bc5f3dd616c8fadb75a23c00c13880a6268f/LiquidityPoolV2Converter'
 import {
-    LiquidityPoolV1Converter as LiquidityPoolV1ConverterContract
+    LiquidityPoolV1Converter
 } from '../../../generated/ConverterUpgrader-0xc724bc5f3dd616c8fadb75a23c00c13880a6268f/LiquidityPoolV1Converter'
 import {
     Converter27 as Converter27Contract
@@ -35,6 +35,7 @@ import {
     OwnerUpdate as OwnerUpdateEvent
 } from '../../../generated/ConverterUpgrader-0xc724bc5f3dd616c8fadb75a23c00c13880a6268f/ConverterUpgrader'
 import { log, BigDecimal, BigInt, Address } from '@graphprotocol/graph-ts'
+import {ethereum} from '@graphprotocol/graph-ts/index';
 
 export function handleConverterOwned(event: ConverterOwnedEvent): void {}
 
@@ -44,46 +45,9 @@ export function handleConverterOwned(event: ConverterOwnedEvent): void {}
 export function handleConverterUpgrade(event: ConverterUpgradeEvent): void {
     let newConverterAddress = event.params._newConverter;
     let oldConverterAddress = event.params._oldConverter;
-    
-    log.debug("Checkpoint 1 for Upgrader {}: {} to {}", [
-        event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-    ])
 
-    let newConverter = ConverterEntity.load(oldConverterAddress.toHexString());
-    if (newConverter === null) {
-        log.debug("Checkpoint 2 for Upgrader {}: {} to {}", [
-            event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-        ])
-        _createNewConverter(newConverterAddress, event);
-        newConverter = ConverterEntity.load(newConverterAddress.toHexString());
-    }
-
-    if (newConverter === null) {
-        log.debug("Checkpoint 3 for Upgrader {}: {} to {}", [
-            event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-        ])
-        log.debug("ConverterEntity null: {}", [newConverterAddress.toHexString()])
-    }
-
-    log.debug("Checkpoint 4 for Upgrader {}: {} to {}", [
-        event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-    ])
-
+    let newConverter = ConverterEntity.load(newConverterAddress.toHexString());
     let oldConverter = ConverterEntity.load(oldConverterAddress.toHexString());
-    if (oldConverter === null) {
-        log.debug("Checkpoint 5 for Upgrader {}: {} to {}", [
-            event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-        ])
-        _createNewConverter(oldConverterAddress, event);
-        oldConverter = ConverterEntity.load(oldConverterAddress.toHexString());
-    }
-    if (oldConverter === null) {
-        log.debug("Checkpoint 6 for Upgrader {}: {} to {}", [
-            event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-        ])
-        log.debug("ConverterEntity null: {}", [newConverterAddress.toHexString()])
-    }
-
     if (newConverter === null || oldConverter === null) {
         log.warning("handleConverterUpgrade: Conversion not handled from {} {} to {} {}", [
             oldConverterAddress.toHexString(),
@@ -94,19 +58,11 @@ export function handleConverterUpgrade(event: ConverterUpgradeEvent): void {
         return
     }
 
-    log.debug("Checkpoint 7 for Upgrader {}: {} to {}", [
-        event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-    ])
-    
-    // newConverter.upgradedFrom = oldConverter.id;
-    // newConverter.save()
+    newConverter.upgradedFrom = oldConverter.id;
+    newConverter.save()
 
-    // oldConverter.upgradedTo = newConverter.id;
-    // oldConverter.save()
-
-    log.debug("Checkpoint 8 for Upgrader {}: {} to {}", [
-        event.address.toHexString(), oldConverterAddress.toHexString(), newConverterAddress.toHexString(), 
-    ])
+    oldConverter.upgradedTo = newConverter.id;
+    oldConverter.save()
 
     if (oldConverter.type.gt(BigInt.fromI32(0))) {
         _updateReserveBalancesAndWeights(oldConverterAddress);
@@ -126,7 +82,7 @@ function _createAndReturnConverterBalance(converterAddress: Address, tokenAddres
         // Get poolToken
         let converter = ConverterEntity.load(id);
         if (converter.type.equals(BigInt.fromI32(2))) {
-            let converterContract = LiquidityPoolV2ConverterContract.bind(converterAddress);
+            let converterContract = LiquidityPoolV2Converter.bind(converterAddress);
             let poolTokenResult = converterContract.try_poolToken(tokenAddress);
             if (poolTokenResult.reverted) {
                 log.error("_createAndReturnConverterBalance contract call reverted {}", [id])
@@ -155,7 +111,7 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
         return
     }
 
-    let converterContract = LiquidityPoolV2ConverterContract.bind(converterAddress);
+    let converterContract = LiquidityPoolV2Converter.bind(converterAddress);
 
     // Update price oracle
     let priceOracleResult = converterContract.try_priceOracle();
@@ -175,7 +131,7 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
 
         let reserveBalanceResult = converterContract.try_reserveStakedBalance(reserveTokenResult.value);
         let reserveWeightResult = converterContract.try_reserveWeight(reserveTokenResult.value);
-        
+
         if (reserveBalanceResult.reverted || reserveWeightResult.reverted) {
             log.error("_updateReserveBalancesAndWeights contract calls reverted for converter {} and token {}", [
                 id,
@@ -196,21 +152,37 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
         let converterBalance = _createAndReturnConverterBalance(converterAddress, reserveTokenResult.value);
 
         // Update converter actual balance
-        let reserveTokenContract = ERC20Token.bind(reserveTokenResult.value);
+        if (reserveTokenResult.value.toHexString() != '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            let reserveTokenContract = ERC20Token.bind(reserveTokenResult.value);
 
-        let balanceOf = reserveTokenContract.try_balanceOf(converterAddress);
-        if (!balanceOf.reverted) {
-            converterBalance.balance = balanceOf.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            let balanceOf = reserveTokenContract.try_balanceOf(converterAddress);
+            if (!balanceOf.reverted) {
+                converterBalance.balance = balanceOf.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            } else {
+                log.warning("Balance of reverted for {} {}", [
+                    converterAddress.toHexString(),
+                    reserveTokenResult.value.toHexString()
+                ])
+            }
+        }
+
+        let isActive = converterContract.try_isActive();
+        if (!isActive.reverted) {
+            if (isActive.value) {
+                converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            }
+            else {
+                converterBalance.stakedAmount = BigDecimal.fromString('0');
+            }
         }
         else {
-            log.warning("Balance of reverted for {} {}", [
+            log.warning("isActive reverted for {} {}", [
                 converterAddress.toHexString(),
                 reserveTokenResult.value.toHexString()
             ])
         }
 
         // Update converter balance
-        converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
         converterBalance.weight = reserveWeightResult.value.divDecimal(BigDecimal.fromString("1000000")); // Weight is given in ppm
         converterBalance.save();
 
@@ -233,210 +205,32 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
     }
 }
 
-function _createNewConverter(converterAddress: Address, event: ConverterUpgradeEvent): void {
-    let id = converterAddress.toHexString();
-    let converter = ConverterEntity.load(id);
-    if (converter != null) {
-        log.warning("Converter already exists {}", [id])
-        return
+class LiquidityPoolV1ConverterVersionInBytes extends LiquidityPoolV1Converter {
+    static bind(address: Address): LiquidityPoolV1ConverterVersionInBytes {
+        return new LiquidityPoolV1ConverterVersionInBytes("LiquidityPoolV1Converter", address);
     }
-    log.debug("Creating new converter {}", [id])
+    try_version(): ethereum.CallResult<i32> {
+        log.debug('try_version at address {}', [this._address.toHexString()]);
+        let result = this.call("version", "version():(uint16)", []);
 
-    let converterContract = LiquidityPoolV1ConverterContract.bind(converterAddress);
-    let versionResult = converterContract.try_version();
-    if (versionResult.reverted || versionResult.value as string == "Bancor") {
-        log.error("version() reverted. Converter: {}", [
-            id
-        ])
-        return
-    }
+        if (result != null){
+            let bytesValue = result[0];
+            bytesValue.kind = ethereum.ValueKind.BYTES;
 
-    log.debug("Creating new converter {} (v{})", [id, versionResult.value as string])
+            let bytes = bytesValue.toBytes();
+            log.debug('try_version result: {}', [bytes.toHexString()]);
+            if (bytes.byteLength > 2){
+                log.debug('try_version result is string: "{}". Set version to zero to skip.', [bytes.toString()]);
+                return ethereum.CallResult.fromValue(0);
+            } else {
+                let versionInt = BigInt.fromUnsignedBytes(bytes);
+                log.debug('try_version result is uint16', [versionInt.toString()]);
+                return ethereum.CallResult.fromValue(versionInt.toI32());
+            }
 
-    let converterType = BigInt.fromI32(0);
-    let version = BigInt.fromI32(versionResult.value);
-    if (version.lt(BigInt.fromI32(28))) {
-        if (version.equals(BigInt.fromI32(24)) || version.equals(BigInt.fromI32(25))) {
-            _createAndReturnConverter25(converterAddress, event);
-            Converter25Template.create(converterAddress);
+        } else {
+            return new ethereum.CallResult();
         }
-        else if (version.equals(BigInt.fromI32(26)) || version.equals(BigInt.fromI32(27))) {
-            _createAndReturnConverter27(converterAddress, event);
-            Converter27Template.create(converterAddress);
-        }
-        else {
-            log.error("Converter {} not a known type: {} (v{}).", [
-                id, converterType.toString(), version.toString()
-            ])
-        }
+
     }
-    else {
-        let converterTypeResult = converterContract.try_converterType();
-        if (converterTypeResult.reverted) {
-            log.warning("Could not discover type! Converter: {} (v{})", [
-                id,
-                version.toString()
-            ])
-            return
-        }
-        converterType = BigInt.fromI32(converterTypeResult.value);
-        if (converterType.equals(BigInt.fromI32(2))) {
-            _createAndReturnLiquidityPoolV2Converter(converterAddress, event);
-            LiquidityPoolV2ConverterTemplate.create(converterAddress);
-        }
-        else if (converterType.equals(BigInt.fromI32(1))) {
-            _createAndReturnLiquidityPoolV1Converter(converterAddress, event);
-            LiquidityPoolV1ConverterTemplate.create(converterAddress);
-        }
-    }
-}
-
-function _createAndReturnLiquidityPoolV2Converter(converterAddress: Address, event: ConverterUpgradeEvent): ConverterEntity {
-    let id = converterAddress.toHexString();
-    let converter = ConverterEntity.load(id);
-
-    let converterContract = LiquidityPoolV2ConverterContract.bind(converterAddress);
-    let anchorResult = converterContract.try_anchor();
-    let conversionFeeResult = converterContract.try_conversionFee();
-    let isActiveResult = converterContract.try_isActive();
-    let versionResult = converterContract.try_version();
-    let priceOracleResult = converterContract.try_priceOracle();
-    let converterTypeResult = converterContract.try_converterType();
-    
-    if (anchorResult.reverted || conversionFeeResult.reverted || isActiveResult.reverted || versionResult.reverted || priceOracleResult.reverted || converterTypeResult.reverted) {
-        log.warning("handleNewConverter {} missing details (type {}, version {})", [
-            id, 
-            converterTypeResult.value as string,
-            versionResult.value as string
-        ])
-    }
-
-    converter = new ConverterEntity(id);
-    converter.activated = isActiveResult.value;
-    converter.anchor = anchorResult.value.toHexString();
-    converter.conversionFee = conversionFeeResult.value.divDecimal(BigDecimal.fromString("1000000")); // Conversion fee is given in ppm
-    converter.factory = event.address.toHexString();
-    converter.platform = "Bancor";
-    converter.priceOracle = priceOracleResult.value.toHexString();
-    converter.type = BigInt.fromI32(converterTypeResult.value);
-    converter.version = BigInt.fromI32(versionResult.value);
-    converter.numSwaps = BigInt.fromI32(0);
-    converter.createdAtTimestamp = event.block.timestamp;
-    converter.createdAtBlockNumber = event.block.number;
-    converter.createdAtLogIndex = event.logIndex;
-    converter.createdAtTransaction = event.transaction.hash.toHexString();
-    converter.save();
-
-    return converter!
-}
-
-function _createAndReturnLiquidityPoolV1Converter(converterAddress: Address, event: ConverterUpgradeEvent): ConverterEntity {
-    let id = converterAddress.toHexString();
-    let converter = ConverterEntity.load(id);
-
-    let converterContract = LiquidityPoolV1ConverterContract.bind(converterAddress);
-    let anchorResult = converterContract.try_anchor();
-    let conversionFeeResult = converterContract.try_conversionFee();
-    let isActiveResult = converterContract.try_isActive();
-    let versionResult = converterContract.try_version();
-    let converterTypeResult = converterContract.try_converterType();
-    
-    if (anchorResult.reverted || conversionFeeResult.reverted || isActiveResult.reverted || versionResult.reverted || converterTypeResult.reverted) {
-        log.warning("handleNewConverter {} missing details (type {}, version {})", [
-            id, 
-            converterTypeResult.value as string,
-            versionResult.value as string
-        ])
-    }
-
-    converter = new ConverterEntity(id);
-    converter.activated = isActiveResult.value;
-    converter.anchor = anchorResult.value.toHexString();
-    converter.conversionFee = conversionFeeResult.value.divDecimal(BigDecimal.fromString("1000000")); // Conversion fee is given in ppm
-    converter.factory = event.address.toHexString();
-    converter.platform = "Bancor";
-    converter.type = BigInt.fromI32(converterTypeResult.value);
-    converter.version = BigInt.fromI32(versionResult.value);
-    converter.numSwaps = BigInt.fromI32(0);
-    converter.createdAtTimestamp = event.block.timestamp;
-    converter.createdAtBlockNumber = event.block.number;
-    converter.createdAtLogIndex = event.logIndex;
-    converter.createdAtTransaction = event.transaction.hash.toHexString();
-    converter.save();
-
-    return converter!
-}
-
-function _createAndReturnConverter27(converterAddress: Address, event: ConverterUpgradeEvent): ConverterEntity {
-    let id = converterAddress.toHexString();
-    log.debug("_createAndReturnConverter27 {}", [id])
-    let converter = ConverterEntity.load(id);
-
-    let converterContract = Converter27Contract.bind(converterAddress);
-    let anchorResult = converterContract.try_token();
-    let conversionFeeResult = converterContract.try_conversionFee();
-    let versionResult = converterContract.try_version();
-    let converterType = BigInt.fromI32(0);
-    
-    if (anchorResult.reverted || conversionFeeResult.reverted || versionResult.reverted) {
-        log.warning("handleNewConverter {} missing details (type {}, version {})", [
-            id, 
-            converterType.toString(),
-            versionResult.value as string
-        ])
-    }
-
-    converter = new ConverterEntity(id);
-    converter.activated = true;
-    converter.anchor = anchorResult.value.toHexString();
-    converter.conversionFee = conversionFeeResult.value.divDecimal(BigDecimal.fromString("1000000")); // Conversion fee is given in ppm
-    converter.factory = event.address.toHexString();
-    converter.platform = "Bancor";
-    converter.type = converterType;
-    converter.version = BigInt.fromI32(versionResult.value);
-    converter.numSwaps = BigInt.fromI32(0);
-    converter.createdAtTimestamp = event.block.timestamp;
-    converter.createdAtBlockNumber = event.block.number;
-    converter.createdAtLogIndex = event.logIndex;
-    converter.createdAtTransaction = event.transaction.hash.toHexString();
-    converter.save();
-
-    return converter!
-}
-
-function _createAndReturnConverter25(converterAddress: Address, event: ConverterUpgradeEvent): ConverterEntity {
-    let id = converterAddress.toHexString();
-    log.debug("_createAndReturnConverter25 {}", [id])
-    let converter = ConverterEntity.load(id);
-
-    let converterContract = Converter25Contract.bind(converterAddress);
-    let anchorResult = converterContract.try_token();
-    let conversionFeeResult = converterContract.try_conversionFee();
-    let versionResult = converterContract.try_version();
-    let converterType = BigInt.fromI32(0);
-    
-    if (anchorResult.reverted || conversionFeeResult.reverted || versionResult.reverted) {
-        log.warning("handleNewConverter {} missing details (type {}, version {})", [
-            id, 
-            converterType.toString(),
-            versionResult.value as string
-        ])
-    }
-
-    converter = new ConverterEntity(id);
-    converter.activated = true;
-    converter.anchor = anchorResult.value.toHexString();
-    converter.conversionFee = conversionFeeResult.value.divDecimal(BigDecimal.fromString("1000000")); // Conversion fee is given in ppm
-    converter.factory = event.address.toHexString();
-    converter.platform = "Bancor";
-    converter.type = converterType;
-    converter.version = BigInt.fromI32(versionResult.value);
-    converter.numSwaps = BigInt.fromI32(0);
-    converter.createdAtTimestamp = event.block.timestamp;
-    converter.createdAtBlockNumber = event.block.number;
-    converter.createdAtLogIndex = event.logIndex;
-    converter.createdAtTransaction = event.transaction.hash.toHexString();
-    converter.save();
-
-    return converter!
 }

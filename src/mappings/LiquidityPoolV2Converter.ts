@@ -317,6 +317,7 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
     let priceOracleResult = converterContract.try_priceOracle();
     converter.priceOracle = priceOracleResult.reverted ? null : priceOracleResult.value.toHexString();
     converter.save()
+    let reservesCount = converterContract.try_connectorTokenCount()
 
     // Update balances and weights
     let i = BigInt.fromI32(0);
@@ -356,8 +357,23 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
             ])
         }
 
+        let isActive = converterContract.try_isActive();
+        if (!isActive.reverted) {
+            if (isActive.value) {
+                converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            }
+            else {
+                converterBalance.stakedAmount = BigDecimal.fromString('0');
+            }
+        }
+        else {
+            log.warning("isActive reverted for {} {}", [
+                converterAddress.toHexString(),
+                reserveTokenResult.value.toHexString()
+            ])
+        }
+
         // Update converter staked reserve balance
-        converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
         converterBalance.weight = reserveWeightResult.value.divDecimal(BigDecimal.fromString("1000000")); // Weight is given in ppm
         converterBalance.save()
 

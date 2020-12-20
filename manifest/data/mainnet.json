@@ -11,6 +11,11 @@
         "ConverterFactory1": [
             {
                 "name": "ConverterFactory1",
+                "address": "0x9afb9d7ed0f6c054ec76ea61d5cabc384d4dcb25",
+                "startBlock": 10272737
+            },
+            {
+                "name": "ConverterFactory1",
                 "address": "0x3cc4a258aff14a88380ca3d9703d6bbfb7a8042e",
                 "startBlock": 9896983
             },
@@ -61,7 +66,7 @@
                 "address": "0xaebf1085dd9a0fa403a75399c956595e3a7c3d5c",
                 "startBlock": 5766221
             }
-        ],
+            ],
         "Registries": [
             {
                 "name": "ContractRegistry",

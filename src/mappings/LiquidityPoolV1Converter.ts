@@ -237,6 +237,7 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
         log.warning("_updateReserveBalancesAndWeights Converter not found {}", [id])
         return
     }
+
     
     // Update balances and weights
     let i = BigInt.fromI32(0);
@@ -263,21 +264,37 @@ function _updateReserveBalancesAndWeights(converterAddress: Address): void {
         let converterBalance = _createAndReturnConverterBalance(converterAddress, reserveTokenResult.value);
 
         // Update converter actual balance
-        let reserveTokenContract = ERC20Token.bind(reserveTokenResult.value);
+        if (reserveTokenResult.value.toHexString() != '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'){
+            let reserveTokenContract = ERC20Token.bind(reserveTokenResult.value);
+            let balanceOf = reserveTokenContract.try_balanceOf(converterAddress);
+            if (!balanceOf.reverted) {
+                converterBalance.balance = balanceOf.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            }
+            else {
+                log.warning("Balance of reverted for {} {}", [
+                    converterAddress.toHexString(),
+                    reserveTokenResult.value.toHexString()
+                ])
+            }
+        }
 
-        let balanceOf = reserveTokenContract.try_balanceOf(converterAddress);
-        if (!balanceOf.reverted) {
-            converterBalance.balance = balanceOf.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+        let isActive = converterContract.try_isActive();
+        if (!isActive.reverted) {
+            if (isActive.value) {
+                converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
+            }
+            else {
+                converterBalance.stakedAmount = BigDecimal.fromString('0');
+            }
         }
         else {
-            log.warning("Balance of reverted for {} {}", [
+            log.warning("isActive reverted for {} {}", [
                 converterAddress.toHexString(),
                 reserveTokenResult.value.toHexString()
             ])
         }
 
         // Update converter staked reserve balance
-        converterBalance.stakedAmount = reserveBalanceResult.value.divDecimal((BigInt.fromI32(10).pow(reserveToken.decimals.toI32() as u8).toBigDecimal()));
         converterBalance.weight = reserveWeightResult.value.divDecimal(BigDecimal.fromString("1000000")); // Weight is given in ppm
         converterBalance.save()
 
